@@ -1,0 +1,219 @@
+---
+import { getCollection, render } from 'astro:content';
+import FormattedDate from '../../components/FormattedDate.astro';
+import Footer from '../../components/Footer.astro';
+import Header from '../../components/Header.astro';
+
+export async function getStaticPaths() {
+	const politicos = await getCollection('politicos');
+	const noticias = await getCollection('noticias');
+	return politicos.map((politico) => ({
+		params: { slug: politico.id },
+		props: {
+			politico,
+			noticias: noticias.filter((n) => n.data.politician.id === politico.id).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf())
+		},
+	}));
+}
+
+const { politico, noticias } = Astro.props;
+const { Content } = await render(politico);
+---
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1" />
+	<title>{politico.data.name} | Quem São Eles?</title>
+	<meta name="description" content={`Perfil de ${politico.data.name} - ${politico.data.role}`} />
+	<style>
+		:root {
+			--font-main: "Georgia", serif;
+			--font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+			--bg-color: #fcfcfc;
+			--text-color: #111;
+			--link-color: #000;
+			--link-hover: #555;
+			--border-color: #ddd;
+		}
+		body {
+			font-family: var(--font-main);
+			background-color: var(--bg-color);
+			color: var(--text-color);
+			line-height: 1.6;
+			margin: 0;
+			padding: 0;
+		}
+		header.site-header {
+			border-bottom: 1px solid var(--border-color);
+			padding: 1rem;
+			background: #fff;
+		}
+		header.site-header a {
+			font-family: var(--font-sans);
+			font-weight: bold;
+			font-size: 1.2rem;
+			text-transform: uppercase;
+			text-decoration: none;
+			color: #000;
+		}
+		main {
+			max-width: 800px;
+			margin: 2rem auto;
+			padding: 0 1rem;
+		}
+		.profile-header {
+			display: flex;
+			gap: 2rem;
+			align-items: center;
+			margin-bottom: 2rem;
+			border-bottom: 2px solid #000;
+			padding-bottom: 2rem;
+		}
+		@media (max-width: 600px) {
+			.profile-header {
+				flex-direction: column;
+				text-align: center;
+			}
+		}
+		.photo-placeholder {
+			width: 150px;
+			height: 150px;
+			background-color: #eee;
+			border-radius: 50%;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			font-family: var(--font-sans);
+			color: #999;
+			font-size: 0.9rem;
+			border: 1px solid var(--border-color);
+			flex-shrink: 0;
+		}
+		.photo-placeholder img {
+			width: 100%;
+			height: 100%;
+			object-fit: cover;
+			border-radius: 50%;
+		}
+		.profile-info h1 {
+			margin: 0 0 0.5rem 0;
+			font-size: 2.5rem;
+			line-height: 1.1;
+		}
+		.profile-info p {
+			font-family: var(--font-sans);
+			margin: 0.2rem 0;
+			font-size: 1.1rem;
+			color: #444;
+		}
+		.tags {
+			margin-top: 1rem;
+			display: flex;
+			gap: 0.5rem;
+			flex-wrap: wrap;
+		}
+		.tag {
+			background: #eee;
+			padding: 0.2rem 0.6rem;
+			font-family: var(--font-sans);
+			font-size: 0.8rem;
+			border-radius: 12px;
+			color: #333;
+		}
+		h2 {
+			font-family: var(--font-sans);
+			font-size: 1.5rem;
+			text-transform: uppercase;
+			border-bottom: 1px solid var(--border-color);
+			padding-bottom: 0.5rem;
+			margin-top: 2rem;
+		}
+		.bio {
+			font-size: 1.1rem;
+		}
+		ul.news-list {
+			list-style: none;
+			padding: 0;
+			margin: 0;
+		}
+		ul.news-list li {
+			margin-bottom: 1.5rem;
+			padding-bottom: 1.5rem;
+			border-bottom: 1px solid #eee;
+		}
+		ul.news-list li h3 {
+			margin: 0 0 0.5rem 0;
+			font-size: 1.2rem;
+		}
+		.meta {
+			font-family: var(--font-sans);
+			font-size: 0.85rem;
+			color: #666;
+		}
+		a {
+			color: var(--link-color);
+			text-decoration: underline;
+		}
+		a:hover {
+			color: var(--link-hover);
+		}
+	</style>
+</head>
+<body>
+	<header class="site-header">
+		<a href="/quem-sao-eles/">← Quem São Eles?</a>
+	</header>
+
+	<main>
+		<div class="profile-header">
+			<div class="photo-placeholder">
+				{politico.data.photo ? (
+					<img src={politico.data.photo.src} alt={`Foto de ${politico.data.name}`} />
+				) : (
+					<span>Sem Foto</span>
+				)}
+			</div>
+			<div class="profile-info">
+				<h1>{politico.data.name}</h1>
+				<p><strong>Partido:</strong> {politico.data.party}</p>
+				<p><strong>Cargo:</strong> {politico.data.role} ({politico.data.chamber})</p>
+				<p><strong>No cargo desde:</strong> <FormattedDate date={politico.data.since} /></p>
+				{politico.data.tags && politico.data.tags.length > 0 && (
+					<div class="tags">
+						{politico.data.tags.map(tag => <span class="tag">{tag}</span>)}
+					</div>
+				)}
+			</div>
+		</div>
+
+		<section class="bio">
+			<h2>Biografia e Fontes</h2>
+			<Content />
+		</section>
+
+		<section class="recent-news">
+			<h2>Notícias Recentes</h2>
+			{noticias.length > 0 ? (
+				<ul class="news-list">
+					{noticias.map((noticia) => (
+						<li>
+							<h3>{noticia.data.title}</h3>
+							<div class="meta">
+								<FormattedDate date={noticia.data.date} /> •
+								<a href={noticia.data.source_url} target="_blank" rel="noopener noreferrer">Fonte Original</a> |
+								<a href={noticia.data.archive_url} target="_blank" rel="noopener noreferrer">Archive</a>
+							</div>
+							<p>{noticia.data.summary}</p>
+						</li>
+					))}
+				</ul>
+			) : (
+				<p>Nenhuma notícia recente cadastrada.</p>
+			)}
+		</section>
+	</main>
+	<Footer />
+</body>
+</html>

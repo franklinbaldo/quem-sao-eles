@@ -1,0 +1,186 @@
+---
+import { getCollection } from 'astro:content';
+import FormattedDate from '../components/FormattedDate.astro';
+import Footer from '../components/Footer.astro';
+import Header from '../components/Header.astro';
+
+const politicos = await getCollection('politicos');
+const noticias = await getCollection('noticias');
+
+// Ordena políticos (por padrão, poderíamos ordenar por alguma métrica, mas aqui apenas limitamos a alguns)
+const recentes = politicos.sort((a, b) => b.data.since.valueOf() - a.data.since.valueOf()).slice(0, 5);
+const acessados = politicos.slice(0, 5); // Simplificação
+const ultimasNoticias = noticias.sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf()).slice(0, 5);
+---
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width,initial-scale=1" />
+	<title>Quem São Eles?</title>
+	<meta name="description" content="Catálogo de políticos brasileiros monitorado por agentes jornalistas" />
+	<style>
+		:root {
+			--font-main: "Georgia", serif;
+			--font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+			--bg-color: #fcfcfc;
+			--text-color: #111;
+			--link-color: #000;
+			--link-hover: #555;
+			--border-color: #ddd;
+		}
+		body {
+			font-family: var(--font-main);
+			background-color: var(--bg-color);
+			color: var(--text-color);
+			line-height: 1.6;
+			margin: 0;
+			padding: 0;
+		}
+		header.site-header {
+			border-bottom: 2px solid #000;
+			padding: 2rem 1rem;
+			text-align: center;
+			background: #fff;
+		}
+		header.site-header h1 {
+			font-size: 3rem;
+			font-weight: bold;
+			margin: 0;
+			text-transform: uppercase;
+			letter-spacing: -1px;
+		}
+		header.site-header p {
+			font-family: var(--font-sans);
+			font-size: 1.1rem;
+			color: #555;
+			margin: 0.5rem 0 0 0;
+		}
+		main {
+			max-width: 900px;
+			margin: 2rem auto;
+			padding: 0 1rem;
+			display: grid;
+			grid-template-columns: 2fr 1fr;
+			gap: 2rem;
+		}
+		@media (max-width: 768px) {
+			main {
+				grid-template-columns: 1fr;
+			}
+		}
+		section {
+			margin-bottom: 2rem;
+		}
+		h2 {
+			font-family: var(--font-sans);
+			font-size: 1.5rem;
+			text-transform: uppercase;
+			border-bottom: 1px solid var(--border-color);
+			padding-bottom: 0.5rem;
+			margin-bottom: 1rem;
+		}
+		ul {
+			list-style: none;
+			padding: 0;
+			margin: 0;
+		}
+		li {
+			margin-bottom: 1rem;
+			padding-bottom: 1rem;
+			border-bottom: 1px solid #eee;
+		}
+		li:last-child {
+			border-bottom: none;
+		}
+		a {
+			color: var(--link-color);
+			text-decoration: none;
+			font-weight: bold;
+		}
+		a:hover {
+			color: var(--link-hover);
+			text-decoration: underline;
+		}
+		.meta {
+			font-family: var(--font-sans);
+			font-size: 0.85rem;
+			color: #666;
+			margin-top: 0.2rem;
+		}
+	</style>
+</head>
+<body>
+	<header class="site-header">
+		<h1>Quem São Eles?</h1>
+		<p>Catálogo de políticos brasileiros monitorado por agentes jornalistas</p>
+	</header>
+
+	<main>
+		<div class="content-left">
+			<section>
+				<h2>Últimas Atualizações</h2>
+				{ultimasNoticias.length > 0 ? (
+					<ul>
+						{ultimasNoticias.map((noticia) => (
+							<li>
+								<a href={`/quem-sao-eles/perfil/${noticia.data.politician.id}`}>
+									{noticia.data.title}
+								</a>
+								<div class="meta">
+									<FormattedDate date={noticia.data.date} /> •
+									<a href={noticia.data.source_url} target="_blank" rel="noopener noreferrer">Fonte</a> |
+									<a href={noticia.data.archive_url} target="_blank" rel="noopener noreferrer">Archive</a>
+								</div>
+								<p style="font-size: 0.95rem; margin: 0.5rem 0 0 0;">{noticia.data.summary}</p>
+							</li>
+						))}
+					</ul>
+				) : (
+					<p>Nenhuma atualização recente.</p>
+				)}
+			</section>
+		</div>
+
+		<div class="sidebar">
+			<section>
+				<h2>Mais Recentes</h2>
+				{recentes.length > 0 ? (
+					<ul>
+						{recentes.map((politico) => (
+							<li>
+								<a href={`/quem-sao-eles/perfil/${politico.id}`}>
+									{politico.data.name}
+								</a>
+								<div class="meta">{politico.data.party} • {politico.data.role}</div>
+							</li>
+						))}
+					</ul>
+				) : (
+					<p>Nenhum político cadastrado.</p>
+				)}
+			</section>
+
+			<section>
+				<h2>Mais Acessados</h2>
+				{acessados.length > 0 ? (
+					<ul>
+						{acessados.map((politico) => (
+							<li>
+								<a href={`/quem-sao-eles/perfil/${politico.id}`}>
+									{politico.data.name}
+								</a>
+								<div class="meta">{politico.data.party} • {politico.data.role}</div>
+							</li>
+						))}
+					</ul>
+				) : (
+					<p>Nenhum político cadastrado.</p>
+				)}
+			</section>
+		</div>
+	</main>
+	<Footer />
+</body>
+</html>
