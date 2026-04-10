@@ -15,7 +15,15 @@
     "@astrojs/mdx": "^5.0.2",
     "@astrojs/rss": "^4.0.17",
     "@astrojs/sitemap": "^3.7.1",
+    "@astrojs/svelte": "^8.0.4",
+    "@duckdb/duckdb-wasm": "^1.33.1-dev42.0",
+    "@types/papaparse": "^5.5.2",
     "astro": "^6.0.8",
-    "sharp": "^0.34.3"
+    "papaparse": "^5.5.3",
+    "parquet-wasm": "^0.7.1",
+    "sharp": "^0.34.3",
+    "svelte": "^5.55.3",
+    "typescript": "^5.9.3",
+    "zod": "^4.3.6"
   }
 }
