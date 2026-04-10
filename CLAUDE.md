@@ -139,6 +139,50 @@ Este projeto cresce de forma incremental e deliberada. Cada ciclo adiciona uma n
 
 **Não tente resolver tudo de uma vez.** Um Parquet a mais, uma fonte a mais, um campo a mais no perfil — isso já é uma contribuição válida. Perfeito é inimigo do publicado.
 
+## Equipe de Agentes
+
+O projeto é mantido por uma equipe de 10 agentes de IA que rodam diariamente, cada um produzindo uma PR. Os agentes são organizados em quatro grupos funcionais.
+
+### Coletores de Dados
+
+| Agente | Responsabilidade | PR típica |
+|---|---|---|
+| **Vigia do DOU** | Escaneia o Diário Oficial da União buscando CPFs e nomes de PEPs conhecidos. Extrai atos (nomeações, exonerações, portarias, contratos). | Nova entrada em `src/content/noticias/` com `archive_url` |
+| **Monitor DJEN** | Consome Parquets do [causaganha](https://github.com/franklinbaldo/causaganha) e cruza partes dos processos com CPFs do PEP. | Enriquecimento de perfil com dados de processo judicial |
+| **Repórter de Notícias** | Monitora RSS e scrapa G1, Folha, Estadão, UOL por menções a políticos monitorados. Arquiva no Internet Archive e extrai fato central via IA. | Novas entradas em `src/content/noticias/` |
+| **Enriquecedor de Cadastro** | Puxa Portal da Transparência (viagens, salários), TSE (bens, candidaturas) e Receita/CNPJ. Cria PR apenas se há delta desde o último snapshot. | Atualização de Parquet em `public/data/` |
+
+### Agentes de Conteúdo com IA
+
+| Agente | Responsabilidade | PR típica |
+|---|---|---|
+| **Escritor de Perfis** | Quando um político tem novos dados mas bio desatualizada, usa Gemini para sintetizar biografia factual a partir das fontes coletadas. Nunca inventa — cita fontes. | Atualização do corpo do `.md` em `src/content/politicos/` |
+| **Curador de Timeline** | Agrega todos os eventos de um político (DOU, DJEN, notícias, TSE) em ordem cronológica e gera o Parquet de timeline. | Novo/atualizado `public/data/<slug>_timeline.parquet` |
+
+### Agentes de Qualidade
+
+| Agente | Responsabilidade | PR típica |
+|---|---|---|
+| **Guardião de Integridade** | Roda testes, valida `archive_url`s acessíveis, checa CPFs, verifica que Parquets são legíveis via DuckDB WASM. | Correções de dados ou dependências quebradas |
+| **Arqueólogo de Links** | Encontra URLs sem `archive_url` válido (links mortos, sem backup) e arquiva via Internet Archive API. | Correção de `archive_url` em entradas existentes |
+
+### Agentes de Crescimento
+
+| Agente | Responsabilidade | PR típica |
+|---|---|---|
+| **Caçador de Fontes** | Pesquisa novos datasets públicos brasileiros com potencial de cruzamento por CPF. Propõe novos pipelines com schema esperado. | Nova issue ou PR em `ROADMAP.md` / `scripts/` |
+| **Analista de Cobertura** | Identifica perfis com menos dados e políticos relevantes ainda ausentes do sistema. Monitora quais fontes produzem menos resultado que o esperado. | Novos arquivos `.md` vazios em `src/content/politicos/` para bootstrap |
+
+### Prioridade dos agentes
+
+Os três inegociáveis — que devem estar operacionais antes dos demais:
+
+1. **Vigia do DOU** — fonte mais autoritativa; o DOU registra tudo antes da imprensa
+2. **Guardião de Integridade** — qualidade é o que diferencia um projeto sério de um scraper descuidado
+3. **Repórter de Notícias** — mantém o conteúdo vivo e relevante para o usuário diário
+
+---
+
 ## Regras para agentes
 
 1. **Nunca remover `archive_url`** de notícias — é requisito de integridade do projeto.
@@ -146,4 +190,5 @@ Este projeto cresce de forma incremental e deliberada. Cada ciclo adiciona uma n
 3. **Parquet como formato canônico** — novos dados vão para `public/data/` como Parquet.
 4. **Estética jornalística** — o design é sóbrio (preto, branco, cinza). Não adicionar cores vivas, gradientes ou ícones decorativos.
 5. **Sem backend** — o projeto é 100% estático. Busca e análise rodam no cliente via DuckDB WASM.
-6. **Commit direto em `main`** não é recomendado — usar PRs para features novas.
+6. **Cada agente abre uma PR por rodada** — nunca commitar direto em `main`.
+7. **PRs de agentes são atômicas** — uma fonte, um ciclo, uma mudança. Não agrupar múltiplas responsabilidades numa PR.

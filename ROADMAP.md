@@ -115,6 +115,26 @@ Não existe sprint grande — cada fonte nova já é uma entrega válida.
 
 ---
 
+## Execução: Equipe de Agentes Diários
+
+O roadmap é executado por uma equipe de 10 agentes de IA que rodam uma vez por dia, cada um produzindo uma PR. Os agentes operam em paralelo e são organizados por função:
+
+| Grupo | Agentes | Fases do roadmap |
+|---|---|---|
+| **Coletores** | Vigia do DOU, Monitor DJEN, Repórter de Notícias, Enriquecedor de Cadastro | Fases 1–3 |
+| **Conteúdo com IA** | Escritor de Perfis, Curador de Timeline | Fases 3–4 |
+| **Qualidade** | Guardião de Integridade, Arqueólogo de Links | Todas as fases |
+| **Crescimento** | Caçador de Fontes, Analista de Cobertura | Contínuo |
+
+Os três agentes prioritários — operacionais antes dos demais:
+1. **Vigia do DOU** — fonte mais autoritativa do país
+2. **Guardião de Integridade** — qualidade é o que diferencia o projeto de um scraper descuidado
+3. **Repórter de Notícias** — mantém o conteúdo vivo para o usuário diário
+
+Detalhamento completo de cada agente em [`CLAUDE.md`](./CLAUDE.md#equipe-de-agentes).
+
+---
+
 ## Comparação com causaganha
 
 O [causaganha](https://github.com/franklinbaldo/causaganha) é o projeto irmão mais maduro (~1.400 commits). Compartilha o mesmo stack (Astro + Svelte + DuckDB WASM + Python + ibis + Parquet + Internet Archive) e serve como referência de arquitetura.
