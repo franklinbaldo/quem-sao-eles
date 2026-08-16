@@ -3,6 +3,9 @@
   import * as duckdb from '@duckdb/duckdb-wasm';
   import { z } from 'zod';
 
+  export let parquetUrl: string;
+  export let dataPeriod: string;
+
   // Define our expected row schema based on the python pipeline output
   const formatDate = (val: any) => {
     if (!val) return null;
@@ -35,9 +38,6 @@
   let connection: duckdb.AsyncDuckDBConnection | null = null;
   let errorMessage = '';
 
-  // The astro config uses base: '/quem-sao-eles', so public files are at '/quem-sao-eles/...'
-  const PARQUET_URL = '/quem-sao-eles/data/202602_pep.parquet';
-
   onMount(async () => {
     try {
       const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
@@ -55,14 +55,6 @@
       URL.revokeObjectURL(worker_url);
 
       connection = await dbInstance.connect();
-
-      // Register the file
-      // In production, we can use DuckDB to directly query the HTTP endpoint of the internet archive
-      // For this step, we'll query the static parquet we just generated locally
-      // For local development it will be available at base + /data/...
-
-      // We don't necessarily need to register the file, duckdb can read from url
-      // but registering might be more robust depending on setup. Let's just run an http query.
       dbReady = true;
     } catch (e: any) {
       errorMessage = "Erro ao inicializar o banco de dados: " + e.message;
@@ -79,7 +71,7 @@
     try {
       // Escape single quotes for SQL
       const safeQuery = query.replace(/'/g, "''");
-      const url = new URL(PARQUET_URL, window.location.href).href;
+      const url = new URL(parquetUrl, window.location.href).href;
 
       const sql = `
         SELECT *
@@ -94,8 +86,6 @@
 
       // Convert Apache Arrow table to JS array and validate
       const rawRows = result.toArray().map(row => row.toJSON());
-
-      // Validate via Zod
       const parsedRows = z.array(PepRowSchema).safeParse(rawRows);
 
       if (parsedRows.success) {
@@ -114,49 +104,67 @@
   }
 </script>
 
-<div class="search-box">
-  <input
-    type="text"
-    bind:value={query}
-    placeholder="Busque por Nome ou CPF (min 3 caracteres)..."
-    on:keydown={(e) => e.key === 'Enter' && handleSearch()}
-  />
-  <button on:click={handleSearch} disabled={!dbReady || isSearching || query.length < 3}>
-    {isSearching ? 'Buscando...' : 'Buscar'}
-  </button>
+<div class="search-control">
+  <label for="pep-query">Nome ou CPF</label>
+  <p id="pep-query-help">Digite ao menos 3 caracteres. A busca consulta a competência {dataPeriod}.</p>
+  <div class="search-box">
+    <input
+      id="pep-query"
+      type="text"
+      bind:value={query}
+      placeholder="Ex.: nome ou CPF mascarado"
+      aria-describedby="pep-query-help"
+      on:keydown={(e) => e.key === 'Enter' && handleSearch()}
+    />
+    <button on:click={handleSearch} disabled={!dbReady || isSearching || query.length < 3}>
+      {isSearching ? 'Buscando...' : 'Buscar'}
+    </button>
+  </div>
 </div>
 
 {#if errorMessage}
-  <div class="error">{errorMessage}</div>
+  <div class="error" role="alert">{errorMessage}</div>
 {/if}
 
 {#if results.length > 0}
   <div class="results">
-    <p class="count">Encontrados {results.length} registros</p>
+    <p class="count" aria-live="polite">Encontrados {results.length} registros</p>
     {#each results as row}
-      <div class="card">
+      <article class="card">
         <h3>{row.nome || 'Nome Indisponível'}</h3>
         <p class="role"><strong>Cargo:</strong> {row.descricao_funcao || row.sigla_funcao} - {row.nome_orgao}</p>
         <p class="dates"><strong>Exercício:</strong> {row.data_inicio_exercicio} a {row.data_fim_exercicio || 'Atual'}</p>
         {#if row.cpf}
           <p class="cpf"><strong>CPF Mascarado:</strong> {row.cpf}</p>
         {/if}
-      </div>
+      </article>
     {/each}
   </div>
 {:else if query && !isSearching && dbReady && results.length === 0 && !errorMessage}
-  <p>Nenhum resultado encontrado para "{query}".</p>
+  <p aria-live="polite">Nenhum resultado encontrado para "{query}".</p>
 {/if}
 
-{#if !dbReady}
-  <p class="loading-db">Carregando engine de busca (DuckDB-WASM)...</p>
+{#if !dbReady && !errorMessage}
+  <p class="loading-db" role="status">Carregando engine de busca (DuckDB-WASM)...</p>
 {/if}
 
 <style>
+  .search-control {
+    margin-bottom: 2rem;
+  }
+  label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 0.25rem;
+  }
+  #pep-query-help {
+    color: #555;
+    font-size: 0.9rem;
+    margin: 0 0 0.75rem;
+  }
   .search-box {
     display: flex;
     gap: 0.5rem;
-    margin-bottom: 2rem;
   }
   input {
     flex: 1;
@@ -164,6 +172,11 @@
     font-size: 1rem;
     border: 1px solid #ccc;
     border-radius: 4px;
+  }
+  input:focus-visible,
+  button:focus-visible {
+    outline: 2px solid #111;
+    outline-offset: 2px;
   }
   button {
     padding: 0.75rem 1.5rem;
@@ -180,11 +193,11 @@
     cursor: not-allowed;
   }
   .error {
-    color: red;
+    color: #8b0000;
     margin-bottom: 1rem;
     padding: 1rem;
-    background-color: #fee;
-    border: 1px solid #fcc;
+    background-color: #fff2f2;
+    border: 1px solid #d88;
   }
   .loading-db {
     color: #666;
@@ -218,5 +231,11 @@
   .count {
     font-weight: bold;
     margin-bottom: 1rem;
+  }
+  @media (max-width: 600px) {
+    .search-box {
+      align-items: stretch;
+      flex-direction: column;
+    }
   }
 </style>
