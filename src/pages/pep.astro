@@ -1,6 +1,28 @@
 ---
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
 import Footer from '../components/Footer.astro';
 import PepSearch from '../components/PepSearch.svelte';
+
+const pepFiles = readdirSync(join(process.cwd(), 'public', 'data'))
+	.filter((name) => /^\d{6}_pep\.parquet$/.test(name))
+	.sort();
+const latestPepFile = pepFiles.at(-1);
+
+if (!latestPepFile) {
+	throw new Error('Nenhum snapshot PEP encontrado em public/data');
+}
+
+const ym = latestPepFile.slice(0, 6);
+const periodIso = `${ym.slice(0, 4)}-${ym.slice(4, 6)}`;
+const periodLabel = new Intl.DateTimeFormat('pt-BR', {
+	month: 'long',
+	year: 'numeric',
+	timeZone: 'UTC',
+}).format(new Date(`${periodIso}-01T00:00:00Z`));
+const parquetUrl = `${import.meta.env.BASE_URL}data/${latestPepFile}`;
+const sourceUrl = `https://portaldatransparencia.gov.br/download-de-dados/pep/${ym}`;
 ---
 
 <!DOCTYPE html>
@@ -9,6 +31,7 @@ import PepSearch from '../components/PepSearch.svelte';
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width,initial-scale=1" />
 	<title>Busca de PEP | Quem São Eles?</title>
+	<meta name="description" content={`Busca na base aberta de Pessoas Expostas Politicamente da CGU — competência ${periodLabel}.`} />
 	<style>
 		:root {
 			--font-main: "Georgia", serif;
@@ -59,9 +82,45 @@ import PepSearch from '../components/PepSearch.svelte';
 			color: #555;
 			font-weight: bold;
 		}
-		.back-link:hover {
+		.back-link:hover,
+		.back-link:focus-visible {
 			text-decoration: underline;
 			color: #000;
+		}
+		.dataset-context {
+			border-block: 1px solid var(--border-color);
+			font-family: var(--font-sans);
+			margin-bottom: 2rem;
+			padding: 1rem 0;
+		}
+		.dataset-context h2 {
+			font-family: var(--font-main);
+			font-size: 1.1rem;
+			margin: 0 0 0.75rem;
+		}
+		.dataset-context dl {
+			display: grid;
+			grid-template-columns: max-content 1fr;
+			gap: 0.25rem 0.75rem;
+			margin: 0;
+		}
+		.dataset-context dt {
+			font-weight: 700;
+		}
+		.dataset-context dd {
+			margin: 0;
+		}
+		.dataset-context a {
+			color: inherit;
+		}
+		@media (max-width: 520px) {
+			.dataset-context dl {
+				grid-template-columns: 1fr;
+				gap: 0.1rem;
+			}
+			.dataset-context dd {
+				margin-bottom: 0.65rem;
+			}
 		}
 	</style>
 </head>
@@ -72,10 +131,22 @@ import PepSearch from '../components/PepSearch.svelte';
 	</header>
 
 	<main>
-		<a href="/quem-sao-eles" class="back-link">← Voltar à página inicial</a>
+		<a href={import.meta.env.BASE_URL} class="back-link">← Voltar à página inicial</a>
+
+		<aside class="dataset-context" aria-labelledby="dataset-context-title">
+			<h2 id="dataset-context-title">Base consultada</h2>
+			<dl>
+				<dt>Origem</dt>
+				<dd><a href={sourceUrl} target="_blank" rel="noopener noreferrer">Portal da Transparência / CGU</a></dd>
+				<dt>Competência</dt>
+				<dd><time datetime={periodIso}>{periodLabel}</time></dd>
+				<dt>Arquivo</dt>
+				<dd><a href={parquetUrl}>{latestPepFile}</a></dd>
+			</dl>
+		</aside>
 
 		<div style="font-family: var(--font-sans);">
-			<PepSearch client:only="svelte" />
+			<PepSearch client:only="svelte" parquetUrl={parquetUrl} dataPeriod={periodLabel} />
 		</div>
 	</main>
 	<Footer />
