@@ -103,11 +103,38 @@ const ultimasNoticias = noticias.sort((a, b) => b.data.date.valueOf() - a.data.d
 			color: var(--link-hover);
 			text-decoration: underline;
 		}
+		a:focus-visible {
+			outline: 2px solid #111;
+			outline-offset: 3px;
+		}
 		.meta {
 			font-family: var(--font-sans);
 			font-size: 0.85rem;
 			color: #666;
 			margin-top: 0.2rem;
+		}
+		.pep-access {
+			border-block: 1px solid #111;
+			padding: 1rem 0;
+		}
+		.pep-access h2 {
+			border: 0;
+			font-family: var(--font-main);
+			font-size: 1.25rem;
+			margin: 0 0 0.35rem;
+			padding: 0;
+			text-transform: none;
+		}
+		.pep-access p {
+			margin: 0 0 0.65rem;
+		}
+		.pep-access .eyebrow {
+			font-family: var(--font-sans);
+			font-size: 0.78rem;
+			font-weight: 700;
+			letter-spacing: 0.08em;
+			margin-bottom: 0.3rem;
+			text-transform: uppercase;
 		}
 	</style>
 </head>
@@ -119,6 +146,13 @@ const ultimasNoticias = noticias.sort((a, b) => b.data.date.valueOf() - a.data.d
 
 	<main>
 		<div class="content-left">
+			<section class="pep-access" aria-labelledby="pep-access-title">
+				<p class="eyebrow">Dados públicos</p>
+				<h2 id="pep-access-title">Consultar Pessoas Expostas Politicamente</h2>
+				<p>A base PEP da CGU é consultável separadamente do catálogo editorial, com a competência e o arquivo usados na busca identificados na própria página.</p>
+				<a href={`${import.meta.env.BASE_URL}pep`}>Abrir busca PEP →</a>
+			</section>
+
 			<section>
 				<h2>Últimas Atualizações</h2>
 				{ultimasNoticias.length > 0 ? (
