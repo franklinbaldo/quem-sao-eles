@@ -1,0 +1,99 @@
+name: PEP visual capture
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'public/data/**'
+      - 'scripts/capture-pep.mjs'
+      - 'astro.config.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/pep-visual-capture.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'public/data/**'
+      - 'scripts/capture-pep.mjs'
+      - 'astro.config.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/pep-visual-capture.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture-pep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Project Pages artifact
+        run: npm run build
+
+      - name: Prepare Project Pages base path
+        run: |
+          mkdir -p serve-root/quem-sao-eles
+          cp -R dist/. serve-root/quem-sao-eles/
+
+      - name: Install Chrome
+        id: chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      - name: Serve built artifact
+        run: |
+          python3 -m http.server 4173 --directory serve-root > /tmp/quem-sao-eles-http.log 2>&1 &
+          echo $! > /tmp/quem-sao-eles-http.pid
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173/quem-sao-eles/pep/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/quem-sao-eles-http.log
+          exit 1
+
+      - name: Start Chrome with DevTools
+        env:
+          CHROME: ${{ steps.chrome.outputs.chrome-path }}
+          PEP_URL: http://127.0.0.1:4173/quem-sao-eles/pep/
+        run: |
+          "$CHROME" \
+            --headless=new \
+            --no-sandbox \
+            --disable-gpu \
+            --window-size=1280,900 \
+            --remote-debugging-address=127.0.0.1 \
+            --remote-debugging-port=9222 \
+            --user-data-dir=/tmp/pep-chrome-profile \
+            "$PEP_URL" > /tmp/pep-chrome.log 2>&1 &
+          echo $! > /tmp/pep-chrome.pid
+
+      - name: Capture semantic browser state
+        env:
+          PEP_URL: http://127.0.0.1:4173/quem-sao-eles/pep/
+          CHROME_DEBUGGER: http://127.0.0.1:9222
+          CAPTURE_TIMEOUT_MS: '30000'
+        run: node scripts/capture-pep.mjs
+
+      - name: Upload rendered evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pep-rendered-evidence
+          path: artifacts/
+          if-no-files-found: error
