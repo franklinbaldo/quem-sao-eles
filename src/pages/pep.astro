@@ -21,7 +21,8 @@ const periodLabel = new Intl.DateTimeFormat('pt-BR', {
 	year: 'numeric',
 	timeZone: 'UTC',
 }).format(new Date(`${periodIso}-01T00:00:00Z`));
-const parquetUrl = `${import.meta.env.BASE_URL}data/${latestPepFile}`;
+const baseUrl = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+const parquetUrl = `${baseUrl}data/${latestPepFile}`;
 const sourceUrl = `https://portaldatransparencia.gov.br/download-de-dados/pep/${ym}`;
 ---
 
@@ -131,7 +132,7 @@ const sourceUrl = `https://portaldatransparencia.gov.br/download-de-dados/pep/${
 	</header>
 
 	<main>
-		<a href={import.meta.env.BASE_URL} class="back-link">← Voltar à página inicial</a>
+		<a href={baseUrl} class="back-link">← Voltar à página inicial</a>
 
 		<aside class="dataset-context" aria-labelledby="dataset-context-title">
 			<h2 id="dataset-context-title">Base consultada</h2>
