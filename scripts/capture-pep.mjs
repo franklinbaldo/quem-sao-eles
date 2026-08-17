@@ -115,6 +115,41 @@ if (state === 'incomplete' && observed?.search_control_rendered && observed?.eng
   state = 'engine-timeout';
 }
 
+let queryOutcome = 'not-exercised';
+if (state === 'search-ready') {
+  const triggered = await evaluate(`(() => {
+    const input = document.querySelector('#pep-query');
+    const button = input?.closest('.search-control')?.querySelector('button');
+    if (!(input instanceof HTMLInputElement) || !(button instanceof HTMLButtonElement)) return false;
+    input.value = 'zzzxxy';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    button.click();
+    return true;
+  })()`);
+
+  if (!triggered) {
+    queryOutcome = 'control-missing';
+  } else {
+    const queryDeadline = Date.now() + timeoutMs;
+    while (Date.now() < queryDeadline) {
+      const queryState = await evaluate(`(() => {
+        const text = document.body?.innerText ?? '';
+        if (text.includes('Erro na busca:')) return 'query-error';
+        if (text.includes('Nenhum resultado encontrado para "zzzxxy".')) return 'empty-success';
+        if (/Encontrados \\d+ registros/.test(text)) return 'results-success';
+        if (text.includes('Buscando...')) return 'searching';
+        return 'pending';
+      })()`);
+      if (queryState === 'query-error' || queryState === 'empty-success' || queryState === 'results-success') {
+        queryOutcome = queryState;
+        break;
+      }
+      await sleep(500);
+    }
+    if (queryOutcome === 'not-exercised') queryOutcome = 'query-timeout';
+  }
+}
+
 const html = await evaluate('document.documentElement.outerHTML');
 await writeFile(`${outDir}/pep-dom.html`, html, 'utf8');
 
@@ -127,6 +162,7 @@ await writeFile(`${outDir}/pep-1280x900.png`, Buffer.from(screenshot.data, 'base
 
 const evidence = {
   state,
+  query_outcome: queryOutcome,
   url: pepUrl,
   ...observed,
 };
@@ -145,4 +181,7 @@ if (!contractComplete) {
 }
 if (state === 'incomplete') {
   throw new Error('Browser state could not be classified');
+}
+if (state === 'search-ready' && !['empty-success', 'results-success'].includes(queryOutcome)) {
+  throw new Error(`Published Parquet query did not complete successfully: ${queryOutcome}`);
 }
