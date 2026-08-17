@@ -5,6 +5,7 @@ on:
     paths:
       - 'src/**'
       - 'public/data/**'
+      - 'scripts/capture-pep.mjs'
       - 'astro.config.mjs'
       - 'package.json'
       - 'package-lock.json'
@@ -14,6 +15,7 @@ on:
     paths:
       - 'src/**'
       - 'public/data/**'
+      - 'scripts/capture-pep.mjs'
       - 'astro.config.mjs'
       - 'package.json'
       - 'package-lock.json'
@@ -65,65 +67,28 @@ jobs:
           cat /tmp/quem-sao-eles-http.log
           exit 1
 
-      - name: Capture semantic browser state
+      - name: Start Chrome with DevTools
         env:
           CHROME: ${{ steps.chrome.outputs.chrome-path }}
           PEP_URL: http://127.0.0.1:4173/quem-sao-eles/pep/
         run: |
-          mkdir -p artifacts
-          "$CHROME" \
-            --headless=new \
-            --no-sandbox \
-            --disable-gpu \
-            --virtual-time-budget=20000 \
-            --dump-dom \
-            "$PEP_URL" > artifacts/pep-dom.html
-
           "$CHROME" \
             --headless=new \
             --no-sandbox \
             --disable-gpu \
             --window-size=1280,900 \
-            --virtual-time-budget=20000 \
-            --screenshot=artifacts/pep-1280x900.png \
-            "$PEP_URL"
+            --remote-debugging-address=127.0.0.1 \
+            --remote-debugging-port=9222 \
+            --user-data-dir=/tmp/pep-chrome-profile \
+            "$PEP_URL" > /tmp/pep-chrome.log 2>&1 &
+          echo $! > /tmp/pep-chrome.pid
 
-          node <<'NODE'
-          const fs = require('node:fs');
-          const html = fs.readFileSync('artifacts/pep-dom.html', 'utf8');
-
-          const hasSearch = html.includes('id="pep-query"');
-          const hasSource = html.includes('Portal da Transparência / CGU');
-          const hasCompetence = /<time[^>]+datetime="\d{4}-\d{2}"/.test(html);
-          const hasParquet = /href="[^"]*\/data\/\d{6}_pep\.parquet"/.test(html);
-          const loading = html.includes('Carregando engine de busca (DuckDB-WASM)...');
-          const runtimeError = html.includes('Erro ao inicializar o banco de dados:');
-
-          let state = 'incomplete';
-          if (runtimeError) state = 'runtime-error';
-          else if (hasSearch && !loading) state = 'search-ready';
-          else if (hasSearch && loading) state = 'engine-loading';
-
-          const evidence = {
-            state,
-            url: process.env.PEP_URL,
-            source_visible: hasSource,
-            competence_machine_readable: hasCompetence,
-            exact_parquet_link_visible: hasParquet,
-            search_control_rendered: hasSearch,
-          };
-          fs.writeFileSync('artifacts/capture-state.json', JSON.stringify(evidence, null, 2) + '\n');
-          console.log(evidence);
-
-          if (!hasSearch || !hasSource || !hasCompetence || !hasParquet) {
-            console.error('Rendered PEP contract is incomplete.');
-            process.exit(1);
-          }
-          if (state === 'incomplete') {
-            console.error('Browser state could not be classified.');
-            process.exit(1);
-          }
-          NODE
+      - name: Capture semantic browser state
+        env:
+          PEP_URL: http://127.0.0.1:4173/quem-sao-eles/pep/
+          CHROME_DEBUGGER: http://127.0.0.1:9222
+          CAPTURE_TIMEOUT_MS: '30000'
+        run: node scripts/capture-pep.mjs
 
       - name: Upload rendered evidence
         if: always()
