@@ -34,6 +34,9 @@ jobs:
           uv run python scripts/pep_pipeline.py
 
       - name: Commit newly generated parquet (if any changes)
+        # Sempre: o Parquet é escrito antes do upload, então uma falha no
+        # arquivamento não pode custar o snapshot do mês.
+        if: always()
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
