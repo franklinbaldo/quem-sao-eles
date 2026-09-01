@@ -1,8 +1,10 @@
+import datetime
+import hashlib
+import json
 import os
 import sys
-import zipfile
 import tempfile
-import datetime
+import zipfile
 from pathlib import Path
 
 import httpx
@@ -121,35 +123,142 @@ def process_pep_data(zip_url: str, ym: str, output_dir: Path):
         print(f"Successfully wrote Parquet to {out_file}")
         return out_file
 
-def upload_to_ia(ym: str, parquet_path: Path):
-    import internetarchive as ia
-    # Requires secrets in env: IA_ACCESS_KEY, IA_SECRET_KEY
-    if "IA_ACCESS_KEY" not in os.environ:
-        print("Skipping IA upload (no credentials)")
-        return
+# --- Internet Archive ---------------------------------------------------------
+#
+# Contrato de arquivamento: um item por ANO, `pep_br_data_<ano>`, que agrega
+# todos os snapshots mensais daquele ano como arquivos separados. A competência
+# vive no nome do arquivo (`202607_pep.parquet`), não no identificador, porque
+# a CGU republica a base todo mês e o valor está na série, não no recorte.
+#
+# Tanto o identificador quanto o nome do arquivo remoto são funções puras da
+# competência: o mesmo mês sempre aponta para o mesmo endereço público.
 
-    year = ym[:4]
-    identifier = f"pep_br_data_{year}"
+IA_ACCESS_ENV = "IA_ACCESS_KEY"
+IA_SECRET_ENV = "IA_SECRET_KEY"
 
-    print(f"Uploading to Internet Archive item: {identifier}...")
 
-    item = ia.get_item(identifier)
+class CredencialIncompleta(RuntimeError):
+    """Só metade da credencial foi configurada — erro de configuração, não ausência."""
 
-    metadata = {
-        "title": f"PEP - Portal da Transparencia - {year}",
-        "mediatype": "data",
-        "creator": "Controladoria-Geral da União (CGU)",
-        "description": "Pessoas Expostas Politicamente - Dados Abertos Brasil"
+
+def ia_identifier(ym: str) -> str:
+    if not (len(ym) == 6 and ym.isdigit()):
+        raise ValueError(f"competência inválida: {ym!r}")
+    return f"pep_br_data_{ym[:4]}"
+
+
+def ia_remote_name(ym: str) -> str:
+    return f"{ym}_pep.parquet"
+
+
+def ia_credentials(env=None):
+    """(access, secret) quando as duas existem, None quando nenhuma existe.
+
+    Metade configurada é erro: significa que alguém quis publicar e o segredo
+    não chegou. Falhar aqui é mais barato do que descobrir depois que o mês
+    não foi arquivado.
+    """
+    env = os.environ if env is None else env
+    access = (env.get(IA_ACCESS_ENV) or "").strip()
+    secret = (env.get(IA_SECRET_ENV) or "").strip()
+    if access and secret:
+        return access, secret
+    if access or secret:
+        faltando = IA_SECRET_ENV if access else IA_ACCESS_ENV
+        raise CredencialIncompleta(
+            f"{faltando} não está definida; configure as duas ou nenhuma."
+        )
+    return None
+
+
+def file_digests(path: Path) -> dict:
+    md5 = hashlib.md5()
+    sha256 = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            md5.update(chunk)
+            sha256.update(chunk)
+    return {"md5": md5.hexdigest(), "sha256": sha256.hexdigest(),
+            "size_bytes": path.stat().st_size}
+
+
+def build_provenance(ym: str, parquet_path: Path, source_url: str) -> dict:
+    return {
+        "schema": "pep-snapshot-provenance-v1",
+        "competencia": f"{ym[:4]}-{ym[4:]}",
+        "identifier": ia_identifier(ym),
+        "arquivo": ia_remote_name(ym),
+        "origem": source_url,
+        "fonte": "Controladoria-Geral da União (CGU) — Portal da Transparência",
+        "coletado_em": datetime.datetime.now(datetime.timezone.utc)
+        .replace(microsecond=0).isoformat(),
+        **file_digests(parquet_path),
     }
 
-    r = item.upload(
-        str(parquet_path),
-        metadata=metadata,
-        access_key=os.environ["IA_ACCESS_KEY"],
-        secret_key=os.environ["IA_SECRET_KEY"],
-        verbose=True
-    )
-    print("Upload complete!")
+
+def upload_to_ia(ym: str, parquet_path: Path, source_url: str, env=None):
+    """Publica o snapshot do mês no item anual. Devolve o identificador ou None.
+
+    Idempotente: se o arquivo já está lá com o mesmo md5, não reenvia. Se está
+    lá com conteúdo diferente, não sobrescreve por conta própria — um snapshot
+    já publicado é um endereço que outras pessoas podem estar citando.
+    """
+    env = os.environ if env is None else env
+    creds = ia_credentials(env)
+    if creds is None:
+        print(f"Sem {IA_ACCESS_ENV}/{IA_SECRET_ENV}: snapshot fica só no repositório.")
+        return None
+    access_key, secret_key = creds
+
+    import internetarchive as ia
+
+    identifier = ia_identifier(ym)
+    remote_name = ia_remote_name(ym)
+    digests = file_digests(parquet_path)
+
+    item = ia.get_item(identifier)
+    remoto = next((f for f in item.files if f.get("name") == remote_name), None)
+    if remoto is not None:
+        if remoto.get("md5") == digests["md5"]:
+            print(f"{identifier}/{remote_name} já publicado e idêntico; nada a fazer.")
+            return identifier
+        if (env.get("IA_ALLOW_OVERWRITE") or "").strip() != "1":
+            print(
+                f"{identifier}/{remote_name} já existe com conteúdo diferente. "
+                "Não sobrescrevendo (defina IA_ALLOW_OVERWRITE=1 para forçar)."
+            )
+            return identifier
+
+    provenance = build_provenance(ym, parquet_path, source_url)
+    year = ym[:4]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        prov_path = Path(tmpdir) / f"{ym}_pep.provenance.json"
+        prov_path.write_text(json.dumps(provenance, ensure_ascii=False, indent=2),
+                             encoding="utf-8")
+        print(f"Enviando {remote_name} para archive.org/details/{identifier} ...")
+        item.upload(
+            {remote_name: str(parquet_path), prov_path.name: str(prov_path)},
+            metadata={
+                "title": f"PEP — Portal da Transparência — {year}",
+                "mediatype": "data",
+                "collection": "opensource_data",
+                "creator": "Controladoria-Geral da União (CGU)",
+                "subject": ["pep", "brasil", "transparencia", "dados-abertos", year],
+                "language": "por",
+                "description": (
+                    "Pessoas Expostas Politicamente — dados abertos do Portal da "
+                    f"Transparência (CGU). Um arquivo Parquet por competência de {year}, "
+                    "acompanhado do respectivo JSON de proveniência."
+                ),
+            },
+            access_key=access_key,
+            secret_key=secret_key,
+            retries=3,
+            verbose=True,
+        )
+    print(f"Publicado: https://archive.org/download/{identifier}/{remote_name}")
+    return identifier
+
 
 if __name__ == "__main__":
     out_dir = Path("public/data")
@@ -158,7 +267,10 @@ if __name__ == "__main__":
     try:
         url, ym = get_latest_pep_url()
         parquet_file = process_pep_data(url, ym, out_dir)
-        # upload_to_ia(ym, parquet_file) # Disabled by default unless keys are present
     except Exception as e:
         print(f"Error: {e}")
         sys.exit(1)
+
+    # O Parquet já está em disco: a partir daqui uma falha não custa o snapshot,
+    # então ela pode (e deve) ser barulhenta.
+    upload_to_ia(ym, parquet_file, url)

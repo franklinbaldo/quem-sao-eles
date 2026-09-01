@@ -70,6 +70,33 @@ fetch → normalize → to_parquet → upload_ia
 3. Salvar como Parquet em `public/data/`
 4. Upload opcional para Internet Archive (requer `IA_ACCESS_KEY` e `IA_SECRET_KEY`)
 
+## Contrato de arquivamento no Internet Archive
+
+Um item por **ano**, identificador `pep_br_data_<ano>`, agregando todos os
+snapshots mensais daquele ano como arquivos separados:
+
+```
+archive.org/details/pep_br_data_2026
+  ├── 202602_pep.parquet
+  ├── 202602_pep.provenance.json
+  ├── 202603_pep.parquet
+  └── ...
+```
+
+A competência vive no **nome do arquivo**, não no identificador. Identificador e
+nome do arquivo são funções puras da competência (`ia_identifier`,
+`ia_remote_name`), então o mesmo mês sempre resolve para o mesmo endereço
+público e nada precisa ser descoberto por busca.
+
+Cada Parquet vai acompanhado de um `*.provenance.json` com competência, URL de
+origem na CGU, tamanho, md5 e sha256 — é o que prova que o arquivo publicado é
+o mesmo que está em `public/data/`.
+
+O upload é idempotente: arquivo já presente com o mesmo md5 não é reenviado, e
+arquivo presente com conteúdo diferente **não** é sobrescrito (só com
+`IA_ALLOW_OVERWRITE=1`), porque um snapshot publicado é um endereço que outras
+pessoas podem estar citando.
+
 ## Esquema de conteúdo (Astro Content Collections)
 
 ### Político (`src/content/politicos/<slug>.md`)
@@ -123,6 +150,7 @@ uv run python scripts/pep_pipeline.py
 |---|---|
 | `IA_ACCESS_KEY` | Upload para Internet Archive |
 | `IA_SECRET_KEY` | Upload para Internet Archive |
+| `IA_ALLOW_OVERWRITE` | `1` para permitir sobrescrever um snapshot já publicado (padrão: não) |
 
 ## Projeto irmão: causaganha
 
