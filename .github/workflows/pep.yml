@@ -7,6 +7,9 @@ on:
 
 permissions:
   contents: write
+  # Para disparar o deploy do Pages: um push feito com o GITHUB_TOKEN
+  # não dispara workflow nenhum por conta própria.
+  actions: write
 
 jobs:
   pep-pipeline:
@@ -36,10 +39,32 @@ jobs:
       - name: Commit newly generated parquet (if any changes)
         # Sempre: o Parquet é escrito antes do upload, então uma falha no
         # arquivamento não pode custar o snapshot do mês.
+        id: commit
         if: always()
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add public/data/
-          git commit -m "Update PEP Parquet data" || echo "No changes to commit"
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git commit -m "Update PEP Parquet data"
           git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # O push acima é feito com o GITHUB_TOKEN, e o GitHub não dispara workflow
+      # a partir de push autenticado assim — é a proteção contra recursão. Sem
+      # este passo o snapshot novo chega em main e a rota /pep publicada continua
+      # servindo a competência anterior, porque pep.astro escolhe o Parquet em
+      # tempo de build (#17).
+      - name: Publicar o snapshot novo no Pages
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Snapshot novo: ${{ steps.commit.outputs.sha }}"
+          gh workflow run deploy.yml --ref main
+          gh workflow run pep-visual-capture.yml --ref main
