@@ -196,6 +196,27 @@ def build_provenance(ym: str, parquet_path: Path, source_url: str) -> dict:
     }
 
 
+def build_item_metadata(year: str) -> dict:
+    """Metadados do item anual.
+
+    Sem `collection`: uma conta comum não tem privilégio de escrever direto em
+    coleção nomeada (403 "You lack sufficient privileges to write to those
+    collections"). O Internet Archive faz a atribuição sozinho.
+    """
+    return {
+        "title": f"PEP — Portal da Transparência — {year}",
+        "mediatype": "data",
+        "creator": "Controladoria-Geral da União (CGU)",
+        "subject": ["pep", "brasil", "transparencia", "dados-abertos", year],
+        "language": "por",
+        "description": (
+            "Pessoas Expostas Politicamente — dados abertos do Portal da "
+            f"Transparência (CGU). Um arquivo Parquet por competência de {year}, "
+            "acompanhado do respectivo JSON de proveniência."
+        ),
+    }
+
+
 def upload_to_ia(ym: str, parquet_path: Path, source_url: str, env=None):
     """Publica o snapshot do mês no item anual. Devolve o identificador ou None.
 
@@ -238,19 +259,7 @@ def upload_to_ia(ym: str, parquet_path: Path, source_url: str, env=None):
         print(f"Enviando {remote_name} para archive.org/details/{identifier} ...")
         item.upload(
             {remote_name: str(parquet_path), prov_path.name: str(prov_path)},
-            metadata={
-                "title": f"PEP — Portal da Transparência — {year}",
-                "mediatype": "data",
-                "collection": "opensource_data",
-                "creator": "Controladoria-Geral da União (CGU)",
-                "subject": ["pep", "brasil", "transparencia", "dados-abertos", year],
-                "language": "por",
-                "description": (
-                    "Pessoas Expostas Politicamente — dados abertos do Portal da "
-                    f"Transparência (CGU). Um arquivo Parquet por competência de {year}, "
-                    "acompanhado do respectivo JSON de proveniência."
-                ),
-            },
+            metadata=build_item_metadata(year),
             access_key=access_key,
             secret_key=secret_key,
             retries=3,

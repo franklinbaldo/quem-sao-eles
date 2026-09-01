@@ -82,3 +82,16 @@ def test_proveniencia_nao_carrega_credencial(tmp_path, monkeypatch):
     parquet.write_bytes(b"x")
     texto = json.dumps(pipeline.build_provenance("202607", parquet, "https://portal"))
     assert "chave-que-nao-pode-vazar" not in texto
+
+
+def test_metadata_nao_reivindica_colecao():
+    """Regressão: pedir `collection` explicitamente dá 403 numa conta comum.
+
+    "Access Denied - You lack sufficient privileges to write to those
+    collections" — o Internet Archive atribui a coleção sozinho.
+    """
+    meta = pipeline.build_item_metadata("2026")
+    assert "collection" not in meta
+    assert meta["mediatype"] == "data"
+    assert "2026" in meta["title"]
+    assert "2026" in meta["subject"]
