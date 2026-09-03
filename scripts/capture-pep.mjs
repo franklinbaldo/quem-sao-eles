@@ -4,6 +4,8 @@ const debuggerBase = process.env.CHROME_DEBUGGER ?? 'http://127.0.0.1:9222';
 const pepUrl = process.env.PEP_URL;
 const outDir = process.env.CAPTURE_DIR ?? 'artifacts';
 const timeoutMs = Number(process.env.CAPTURE_TIMEOUT_MS ?? 30000);
+const captureSha = process.env.CAPTURE_SHA ?? null;
+const mergeRefSha = process.env.MERGE_REF_SHA ?? null;
 
 if (!pepUrl) throw new Error('PEP_URL is required');
 
@@ -74,6 +76,48 @@ async function evaluate(expression) {
     throw new Error(result.exceptionDetails.text ?? 'Browser evaluation failed');
   }
   return result.result?.value;
+}
+
+async function setViewport(width, height) {
+  await command('Emulation.setDeviceMetricsOverride', {
+    width,
+    height,
+    deviceScaleFactor: 1,
+    mobile: width <= 480,
+  });
+  await sleep(250);
+}
+
+async function captureViewport(name, width, height) {
+  await setViewport(width, height);
+  const layout = await evaluate(`(() => {
+    const input = document.querySelector('#pep-query');
+    const button = input?.closest('.search-control')?.querySelector('button');
+    const parquet = document.querySelector('a[href$="_pep.parquet"]');
+    const time = document.querySelector('time[datetime]');
+    const visible = (element) => {
+      if (!(element instanceof HTMLElement)) return false;
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+    };
+    return {
+      viewport: { width: innerWidth, height: innerHeight },
+      document_width: document.documentElement.scrollWidth,
+      horizontal_overflow: document.documentElement.scrollWidth > innerWidth + 1,
+      search_input_visible: visible(input),
+      search_button_visible: visible(button),
+      provenance_visible: visible(time) && visible(parquet),
+    };
+  })()`);
+
+  const screenshot = await command('Page.captureScreenshot', {
+    format: 'png',
+    captureBeyondViewport: false,
+    fromSurface: true,
+  });
+  await writeFile(`${outDir}/pep-${name}.png`, Buffer.from(screenshot.data, 'base64'));
+  return layout;
 }
 
 await command('Runtime.enable');
@@ -150,21 +194,24 @@ if (state === 'search-ready') {
   }
 }
 
+await setViewport(1280, 900);
 const html = await evaluate('document.documentElement.outerHTML');
 await writeFile(`${outDir}/pep-dom.html`, html, 'utf8');
 
-const screenshot = await command('Page.captureScreenshot', {
-  format: 'png',
-  captureBeyondViewport: true,
-  fromSurface: true,
-});
-await writeFile(`${outDir}/pep-1280x900.png`, Buffer.from(screenshot.data, 'base64'));
+const desktop = await captureViewport('1280x900', 1280, 900);
+const narrow = await captureViewport('390x844', 390, 844);
 
 const evidence = {
   state,
   query_outcome: queryOutcome,
   url: pepUrl,
+  evaluated_sha: captureSha,
+  merge_ref_sha: mergeRefSha,
   ...observed,
+  viewports: {
+    desktop,
+    narrow,
+  },
 };
 await writeFile(`${outDir}/capture-state.json`, `${JSON.stringify(evidence, null, 2)}\n`, 'utf8');
 console.log(evidence);
@@ -184,4 +231,10 @@ if (state === 'incomplete') {
 }
 if (state === 'search-ready' && !['empty-success', 'results-success'].includes(queryOutcome)) {
   throw new Error(`Published Parquet query did not complete successfully: ${queryOutcome}`);
+}
+if (!captureSha) {
+  throw new Error('Rendered evidence does not identify the evaluated commit');
+}
+if (narrow.horizontal_overflow || !narrow.search_input_visible || !narrow.search_button_visible || !narrow.provenance_visible) {
+  throw new Error(`Narrow viewport contract failed: ${JSON.stringify(narrow)}`);
 }
