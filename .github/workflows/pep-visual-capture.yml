@@ -88,12 +88,14 @@ jobs:
           PEP_URL: http://127.0.0.1:4173/quem-sao-eles/pep/
           CHROME_DEBUGGER: http://127.0.0.1:9222
           CAPTURE_TIMEOUT_MS: '30000'
+          CAPTURE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          MERGE_REF_SHA: ${{ github.sha }}
         run: node scripts/capture-pep.mjs
 
       - name: Upload rendered evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pep-rendered-evidence
+          name: pep-rendered-evidence-${{ github.event.pull_request.head.sha || github.sha }}
           path: artifacts/
           if-no-files-found: error
