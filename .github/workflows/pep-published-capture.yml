@@ -1,0 +1,81 @@
+name: PEP published capture
+
+on:
+  workflow_run:
+    workflows: ['Deploy to GitHub Pages']
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  capture-published-pep:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout the commit that was published
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chrome
+        id: chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      - name: Wait for the published route
+        run: |
+          for i in {1..30}; do
+            if curl --fail --silent --show-error \
+              https://franklinbaldo.github.io/quem-sao-eles/pep/ >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo 'A rota pública não respondeu depois da publicação.' >&2
+          exit 1
+
+      - name: Start Chrome on the page readers receive
+        env:
+          CHROME: ${{ steps.chrome.outputs.chrome-path }}
+          PEP_URL: https://franklinbaldo.github.io/quem-sao-eles/pep/
+        run: |
+          "$CHROME" \
+            --headless=new \
+            --no-sandbox \
+            --disable-gpu \
+            --window-size=1280,900 \
+            --remote-debugging-address=127.0.0.1 \
+            --remote-debugging-port=9222 \
+            --user-data-dir=/tmp/pep-published-chrome-profile \
+            "$PEP_URL" > /tmp/pep-published-chrome.log 2>&1 &
+          echo $! > /tmp/pep-published-chrome.pid
+
+      - name: Capture the page readers actually receive
+        env:
+          PEP_URL: https://franklinbaldo.github.io/quem-sao-eles/pep/
+          CHROME_DEBUGGER: http://127.0.0.1:9222
+          CAPTURE_TIMEOUT_MS: '30000'
+          CAPTURE_SHA: ${{ github.event.workflow_run.head_sha }}
+          MERGE_REF_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: node scripts/capture-pep.mjs
+
+      - name: Upload published evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pep-published-evidence-${{ github.event.workflow_run.head_sha }}
+          path: artifacts/
+          if-no-files-found: error
